@@ -1,68 +1,66 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import instaloader
-import time
-import random
+import requests
+import os
 
 app = Flask(__name__)
-CORS(app)  # Allow Netlify / frontend requests
+CORS(app)
 
-# Instaloader instance
-L = instaloader.Instaloader()
+# 🔑 RapidAPI credentials
+RAPID_API_KEY = "b06c1d49b6msh245e5212bde725ap1c5f2ajsnf1a181d58373"
+RAPID_API_HOST = "instagram-downloader-scraper-reels-igtv-posts-stories.p.rapidapi.com"
 
-# =========================
-# Root test route
-# =========================
 @app.route("/", methods=["GET"])
 def home():
     return "Backend is live ✅"
 
-# =========================
-# Download API
-# =========================
 @app.route("/download", methods=["POST"])
 def download():
     data = request.get_json()
-
-    if not data or "url" not in data:
-        return jsonify({
-            "status": "error",
-            "message": "URL is required"
-        }), 400
-
     url = data.get("url")
 
-    if "instagram.com" not in url:
+    if not url:
         return jsonify({
             "status": "error",
-            "message": "Invalid Instagram URL"
+            "message": "Instagram URL required"
         }), 400
 
     try:
-        # Human-like delay (avoid instant blocking)
-        time.sleep(random.uniform(2, 4))
+        response = requests.get(
+            "https://instagram-downloader-scraper-reels-igtv-posts-stories.p.rapidapi.com/media",
+            headers={
+                "X-RapidAPI-Key": RAPID_API_KEY,
+                "X-RapidAPI-Host": RAPID_API_HOST
+            },
+            params={
+                "url": url
+            },
+            timeout=30
+        )
 
-        # Extract shortcode
-        shortcode = url.strip("/").split("/")[-1]
+        result = response.json()
 
-        # Fetch post
-        post = instaloader.Post.from_shortcode(L.context, shortcode)
+        # 🔍 Extract video URL (API returns array sometimes)
+        if "media" in result and len(result["media"]) > 0:
+            video_url = result["media"][0].get("url")
 
-        # Return video URL
+            if video_url:
+                return jsonify({
+                    "status": "success",
+                    "video_url": video_url
+                })
+
         return jsonify({
-            "status": "success",
-            "video_url": post.video_url
-        })
+            "status": "error",
+            "message": "Video not found"
+        }), 400
 
     except Exception as e:
         return jsonify({
             "status": "error",
-            "message": "Unable to download video"
+            "message": "Download failed"
         }), 500
 
 
-# =========================
-# Run app (Render)
-# =========================
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
